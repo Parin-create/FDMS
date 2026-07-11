@@ -1,0 +1,3 @@
+# Alembic revision scripts live here. The first domain migration is created in
+# Sprint 2 (tenant model + RLS). Generate with:
+#   alembic revision --autogenerate -m "create <table>"

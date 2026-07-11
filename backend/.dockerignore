@@ -1,0 +1,33 @@
+# Python bytecode / caches (recursive)
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets / local env (keep the example only)
+.env
+.env.*
+!.env.example
+
+# VCS / editors / docs
+.git/
+.gitignore
+.vscode/
+.idea/
+*.md
+
+# Docker files (not needed inside the build context)
+Dockerfile
+.dockerignore

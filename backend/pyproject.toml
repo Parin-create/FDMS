@@ -1,0 +1,59 @@
+[project]
+name = "fdms-backend"
+version = "0.1.0"
+description = "File Sharing & Document Management System - Backend API"
+requires-python = ">=3.12"
+readme = "README.md"
+dependencies = [
+    "aiohttp>=3.14.1",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "azure-identity>=1.25.3",
+    "azure-keyvault-secrets>=4.11.0",
+    "azure-monitor-opentelemetry>=1.8.9",
+    "azure-storage-blob>=12.30.0",
+    "fastapi>=0.138.0",
+    "opentelemetry-instrumentation-fastapi>=0.64b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.64b0",
+    "passlib[bcrypt]>=1.7.4",
+    "pydantic-settings>=2.14.2",
+    "pyjwt>=2.13.0",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.32",
+    "sqlalchemy>=2.0.51",
+    "structlog>=26.1.0",
+    "uvicorn>=0.49.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "C4", "SIM"]
+ignore = ["B008"]  # FastAPI uses callables in argument defaults (Depends/Query).
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_errors = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.1.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.15.18",
+]
