@@ -1,15 +1,13 @@
 /**
  * Files feature module — clinical document upload, listing, download, and management.
  *
- * Healthcare platform module. No business logic yet (Sprint 4.1 scaffolding);
- * implementation begins in Sprint 4.3 (Upload) and 4.4 (Management).
- * Intended internal structure as this module grows:
- *   api/          typed service functions + zod response schemas
- *   hooks/        TanStack Query hooks (queries/mutations)
- *   components/   module-specific UI
- *   types/        module types (prefer z.infer from schemas)
- *   queryKeys.ts  query-key factory for cache invalidation
+ * Sprint 4.3.1 implements the **Upload** feature only. Listing, download, delete,
+ * search, metadata editing, and versioning are intentionally not implemented yet
+ * (they depend on backend endpoints that do not exist).
  *
- * Re-export this module's public surface from here as it is built.
+ * Public surface:
+ *   UploadPage    - the route target (Files > Upload)
+ *   UploadCard    - self-contained upload workflow (reusable)
  */
-export {};
+export { UploadPage } from '@/features/files/UploadPage';
+export { UploadCard } from '@/features/files/components/UploadCard';

@@ -2,6 +2,7 @@ import { createBrowserRouter } from 'react-router-dom';
 
 import { ProtectedRoute } from '@/auth/ProtectedRoute';
 import { RouteError } from '@/components/RouteError';
+import { UploadPage } from '@/features/files';
 import { HomePage } from '@/pages/HomePage';
 import { LoginPage } from '@/pages/LoginPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -24,6 +25,7 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'files', element: <UploadPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
