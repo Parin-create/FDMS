@@ -18,7 +18,8 @@ interface NavItem {
 // disabled until their sprints land — no fake routes are wired up.
 const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Home', end: true, enabled: true },
-  { to: '/files', label: 'Upload', enabled: true },
+  { to: '/files', label: 'Files', end: true, enabled: true },
+  { to: '/files/upload', label: 'Upload', enabled: true },
   { to: '/folders', label: 'Folders', enabled: false },
   { to: '/documents', label: 'Documents', enabled: false },
   { to: '/shared', label: 'Shared with me', enabled: false },

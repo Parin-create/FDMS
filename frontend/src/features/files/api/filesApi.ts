@@ -1,0 +1,55 @@
+/**
+ * File listing API — GET /api/v1/files.
+ *
+ * A plain JSON GET, so it reuses the existing shared `apiClient` (which attaches
+ * the bearer token). The API client and auth layer are left untouched.
+ */
+
+import { z } from 'zod';
+
+import { apiClient } from '@/lib/api';
+
+/** Mirrors the backend `FileListItem` schema. */
+export const fileListItemSchema = z.object({
+  id: z.string().uuid(),
+  original_filename: z.string(),
+  content_type: z.string(),
+  size_bytes: z.number(),
+  blob_name: z.string(),
+  etag: z.string().nullable().optional(),
+  uploaded_by_id: z.string().uuid().nullable().optional(),
+  created_at: z.string(),
+});
+
+export type FileListItem = z.infer<typeof fileListItemSchema>;
+
+/** Mirrors the backend `FileListResponse` schema. */
+export const fileListResponseSchema = z.object({
+  items: z.array(fileListItemSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export type FileListResponse = z.infer<typeof fileListResponseSchema>;
+
+export interface FileListParams {
+  limit: number;
+  offset: number;
+  sort: 'asc' | 'desc';
+}
+
+/** Fetch a page of the tenant's files. */
+export async function fetchFiles(params: FileListParams): Promise<FileListResponse> {
+  const query = new URLSearchParams({
+    limit: String(params.limit),
+    offset: String(params.offset),
+    sort: params.sort,
+  });
+  const data = await apiClient.get<unknown>(`/files?${query.toString()}`);
+  return fileListResponseSchema.parse(data);
+}
+
+export const fileQueryKeys = {
+  list: (params: FileListParams) => ['files', 'list', params] as const,
+};

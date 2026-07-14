@@ -28,6 +28,21 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+/** Format an ISO datetime string for display (locale-aware). */
+export function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return iso;
+  }
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 /** Validate a file against the UI allowlist and size limit. */
 export function validateFile(file: File): ValidationResult {
   const extension = getExtension(file.name);

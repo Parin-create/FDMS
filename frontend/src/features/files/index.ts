@@ -1,13 +1,15 @@
 /**
- * Files feature module — clinical document upload, listing, download, and management.
+ * Files feature module — clinical document upload and browsing.
  *
- * Sprint 4.3.1 implements the **Upload** feature only. Listing, download, delete,
- * search, metadata editing, and versioning are intentionally not implemented yet
- * (they depend on backend endpoints that do not exist).
+ * Implemented: Upload (Sprint 4.3.1) and File Explorer / list (Sprint 4.3.3).
+ * Download, delete, search, versioning, and sharing are intentionally not
+ * implemented yet.
  *
  * Public surface:
- *   UploadPage    - the route target (Files > Upload)
- *   UploadCard    - self-contained upload workflow (reusable)
+ *   UploadPage        - Files > Upload
+ *   FileExplorerPage  - Files > browse (list, paginated)
+ *   UploadCard        - reusable upload workflow
  */
 export { UploadPage } from '@/features/files/UploadPage';
+export { FileExplorerPage } from '@/features/files/FileExplorerPage';
 export { UploadCard } from '@/features/files/components/UploadCard';
