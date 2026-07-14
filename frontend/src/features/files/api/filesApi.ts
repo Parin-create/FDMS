@@ -75,6 +75,21 @@ export async function fetchFileDetail(id: string): Promise<FileDetail> {
   return fileDetailSchema.parse(data);
 }
 
+/** Mirrors the backend `FileDownloadResponse` schema (short-lived SAS URL). */
+export const fileDownloadSchema = z.object({
+  download_url: z.string().url(),
+  expires_at: z.string(),
+  filename: z.string(),
+});
+
+export type FileDownload = z.infer<typeof fileDownloadSchema>;
+
+/** Request a short-lived download URL for a file. */
+export async function fetchDownloadUrl(id: string): Promise<FileDownload> {
+  const data = await apiClient.get<unknown>(`/files/${id}/download`);
+  return fileDownloadSchema.parse(data);
+}
+
 export const fileQueryKeys = {
   list: (params: FileListParams) => ['files', 'list', params] as const,
   detail: (id: string) => ['files', 'detail', id] as const,

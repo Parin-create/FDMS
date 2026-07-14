@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from fastapi import UploadFile
 from sqlalchemy import select
@@ -32,6 +34,22 @@ class StoredFileNotFoundError(Exception):
 
 class StoredFileForbiddenError(Exception):
     """The file exists but belongs to another tenant (mapped to HTTP 403)."""
+
+
+# Short-lived read window for download SAS URLs.
+_DOWNLOAD_EXPIRY_SECONDS = 300
+
+
+@dataclass(slots=True)
+class DownloadTarget:
+    """How to deliver a file: a SAS ``url`` if available, else stream by blob ref."""
+
+    filename: str
+    content_type: str
+    container: str
+    blob_name: str
+    url: str | None
+    expires_at: datetime | None
 
 # Logical container documents are stored in (configurable via BLOB_CONTAINER_DOCUMENTS).
 _DOCUMENTS_CONTAINER = "documents"
@@ -124,6 +142,17 @@ class FileService:
             principal.tenant_id, limit=limit, offset=offset, descending=descending
         )
 
+    async def _get_owned_file(self, principal: Principal, file_id: uuid.UUID) -> StoredFile:
+        """Load a file and enforce existence + tenant ownership (404/403)."""
+        stored = await self._repo.get_by_id(file_id)
+        if stored is None:
+            raise StoredFileNotFoundError
+        if stored.tenant_id != principal.tenant_id:
+            raise StoredFileForbiddenError
+        # Soft-delete is not yet in the schema; when a ``deleted_at`` column is added,
+        # a soft-deleted file should raise StoredFileNotFoundError here.
+        return stored
+
     async def get_file(
         self, principal: Principal, file_id: uuid.UUID
     ) -> tuple[StoredFile, str | None]:
@@ -132,13 +161,33 @@ class FileService:
         Raises :class:`StoredFileNotFoundError` (404) when the id does not exist,
         or :class:`StoredFileForbiddenError` (403) when it belongs to another tenant.
         """
-        stored = await self._repo.get_by_id(file_id)
-        if stored is None:
-            raise StoredFileNotFoundError
-        if stored.tenant_id != principal.tenant_id:
-            raise StoredFileForbiddenError
+        stored = await self._get_owned_file(principal, file_id)
         uploaded_by = await self._resolve_uploader_email(stored.uploaded_by_id)
         return stored, uploaded_by
+
+    async def get_download(self, principal: Principal, file_id: uuid.UUID) -> DownloadTarget:
+        """Resolve a download target for a file: a short-lived SAS URL if possible."""
+        if self._storage is None:  # pragma: no cover - guarded by DI in the route
+            raise RuntimeError("FileService.get_download requires a storage client")
+
+        stored = await self._get_owned_file(principal, file_id)
+        url = await self._storage.generate_read_url(
+            stored.blob_container,
+            stored.blob_name,
+            filename=stored.original_filename,
+            expiry_seconds=_DOWNLOAD_EXPIRY_SECONDS,
+        )
+        expires_at = (
+            datetime.now(tz=UTC) + timedelta(seconds=_DOWNLOAD_EXPIRY_SECONDS) if url else None
+        )
+        return DownloadTarget(
+            filename=stored.original_filename,
+            content_type=stored.content_type,
+            container=stored.blob_container,
+            blob_name=stored.blob_name,
+            url=url,
+            expires_at=expires_at,
+        )
 
     async def _resolve_uploader_email(self, user_id: uuid.UUID | None) -> str | None:
         if user_id is None:

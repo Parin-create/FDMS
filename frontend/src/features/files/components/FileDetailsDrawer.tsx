@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 
+import { useDownloadFile } from '@/features/files/hooks/useDownloadFile';
 import { useFileDetailQuery } from '@/features/files/hooks/useFileDetailQuery';
 import { formatBytes, formatDate } from '@/features/files/validation';
 import { ApiError } from '@/lib/api';
@@ -21,6 +22,18 @@ function errorMessage(error: Error | null): string {
   return 'Could not load file details.';
 }
 
+function downloadErrorMessage(error: Error | null): string {
+  if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return 'This file no longer exists.';
+    }
+    if (error.status === 403) {
+      return 'You do not have permission to download this file.';
+    }
+  }
+  return 'Download failed. Please try again.';
+}
+
 function DetailRow({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
     <div className="grid grid-cols-3 gap-3 py-2">
@@ -34,6 +47,12 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }):
 export function FileDetailsDrawer({ fileId, onClose }: FileDetailsDrawerProps): JSX.Element {
   const open = fileId !== null;
   const { data, isLoading, isError, error } = useFileDetailQuery(fileId);
+  const {
+    download,
+    isPending: isDownloading,
+    isError: isDownloadError,
+    error: downloadError,
+  } = useDownloadFile();
 
   useEffect(() => {
     if (!open) {
@@ -102,6 +121,28 @@ export function FileDetailsDrawer({ fileId, onClose }: FileDetailsDrawerProps): 
             </dl>
           )}
         </div>
+
+        {data && (
+          <div className="border-t border-gray-200 px-5 py-4">
+            <button
+              type="button"
+              onClick={() => download(data.id)}
+              disabled={isDownloading}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isDownloading && (
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8v4a4 4 0 0 0-4 4H4z" />
+                </svg>
+              )}
+              {isDownloading ? 'Preparing…' : 'Download'}
+            </button>
+            {isDownloadError && (
+              <p className="mt-2 text-sm text-red-600">{downloadErrorMessage(downloadError)}</p>
+            )}
+          </div>
+        )}
       </aside>
     </>
   );

@@ -61,3 +61,11 @@ class FileDetailResponse(BaseModel):
     status: str = Field(..., description="Lifecycle status (e.g. 'available').")
     created_at: datetime
     updated_at: datetime
+
+
+class FileDownloadResponse(BaseModel):
+    """A short-lived, pre-authenticated download URL (Azure Blob SAS)."""
+
+    download_url: str = Field(..., description="Time-limited SAS URL to download from.")
+    expires_at: datetime = Field(..., description="When the URL stops working.")
+    filename: str = Field(..., description="Original filename for the download.")

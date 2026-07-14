@@ -14,6 +14,7 @@ from app.auth.principal import Principal
 from app.models.file import StoredFile
 from app.schemas.files import (
     FileDetailResponse,
+    FileDownloadResponse,
     FileListItem,
     FileListResponse,
     FileUploadResponse,
@@ -124,3 +125,34 @@ def test_get_file_other_tenant_raises_forbidden() -> None:
     service = _service_with(stored)
     with pytest.raises(StoredFileForbiddenError):
         asyncio.run(service.get_file(_principal(uuid4()), stored.id))
+
+
+def _service_with_storage(repo_result: StoredFile | None) -> FileService:
+    # A non-None storage so get_download passes the storage guard.
+    service = FileService(cast(Any, SimpleNamespace()), storage=cast(Any, SimpleNamespace()))
+    service._repo = cast(Any, _FakeRepo(repo_result))
+    return service
+
+
+def test_get_download_missing_raises_not_found() -> None:
+    service = _service_with_storage(None)
+    with pytest.raises(StoredFileNotFoundError):
+        asyncio.run(service.get_download(_principal(uuid4()), uuid4()))
+
+
+def test_get_download_other_tenant_raises_forbidden() -> None:
+    stored = StoredFile(id=uuid4(), tenant_id=uuid4())
+    service = _service_with_storage(stored)
+    with pytest.raises(StoredFileForbiddenError):
+        asyncio.run(service.get_download(_principal(uuid4()), stored.id))
+
+
+def test_file_download_response_shape() -> None:
+    now = datetime.now(tz=timezone.utc)
+    resp = FileDownloadResponse(
+        download_url="https://acct.blob.core.windows.net/documents/x.pdf?sig=redacted",
+        expires_at=now,
+        filename="report.pdf",
+    )
+    assert resp.filename == "report.pdf"
+    assert resp.expires_at == now

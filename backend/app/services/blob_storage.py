@@ -79,10 +79,14 @@ class BlobStorageService:
         containers: Mapping[str, str],
         *,
         credential: Any = None,
+        connection_string: str | None = None,
+        account_url: str | None = None,
     ) -> None:
         self._client = client
         self._containers = dict(containers)
         self._credential = credential
+        self._connection_string = connection_string
+        self._account_url = account_url
 
     # -- construction -------------------------------------------------------
     @classmethod
@@ -96,7 +100,11 @@ class BlobStorageService:
             client = BlobServiceClient.from_connection_string(
                 settings.azure_storage_connection_string, **client_kwargs
             )
-            return cls(client, settings.blob_containers)
+            return cls(
+                client,
+                settings.blob_containers,
+                connection_string=settings.azure_storage_connection_string,
+            )
 
         if settings.azure_storage_account_url:
             from azure.identity.aio import DefaultAzureCredential
@@ -105,9 +113,90 @@ class BlobStorageService:
             client = BlobServiceClient(
                 settings.azure_storage_account_url, credential=credential, **client_kwargs
             )
-            return cls(client, settings.blob_containers, credential=credential)
+            return cls(
+                client,
+                settings.blob_containers,
+                credential=credential,
+                account_url=settings.azure_storage_account_url,
+            )
 
         raise StorageNotConfiguredError("Azure Blob Storage is not configured")
+
+    @staticmethod
+    def _parse_connection_string(connection_string: str) -> dict[str, str]:
+        pairs: list[tuple[str, str]] = []
+        for segment in connection_string.split(";"):
+            key, sep, value = segment.partition("=")
+            if sep:
+                pairs.append((key, value))
+        return dict(pairs)
+
+    @staticmethod
+    def _account_name_from_url(account_url: str) -> str:
+        # https://<account>.blob.core.windows.net -> <account>
+        host = account_url.split("://", 1)[-1]
+        return host.split(".", 1)[0]
+
+    async def generate_read_url(
+        self,
+        container: str,
+        blob_name: str,
+        *,
+        filename: str,
+        expiry_seconds: int,
+    ) -> str | None:
+        """Return a short-lived read-only SAS URL for a blob, or None if unavailable.
+
+        Uses an account-key SAS (connection-string auth) or a user-delegation SAS
+        (managed identity). The token grants time-limited READ only and forces an
+        attachment download with the original filename. Returns None on any failure
+        so the caller can fall back to streaming.
+        """
+        try:
+            from datetime import UTC, datetime, timedelta
+
+            from azure.storage.blob import BlobSasPermissions, generate_blob_sas
+
+            actual_container = self._containers.get(container, container)
+            blob_url = self._blob(container, blob_name).url
+            now = datetime.now(tz=UTC)
+            expiry = now + timedelta(seconds=expiry_seconds)
+            safe_name = filename.encode("ascii", "ignore").decode("ascii") or "download"
+            content_disposition = f'attachment; filename="{safe_name}"'
+            permission = BlobSasPermissions(read=True)
+
+            if self._connection_string:
+                account = self._parse_connection_string(self._connection_string)
+                sas = generate_blob_sas(
+                    account_name=account["AccountName"],
+                    container_name=actual_container,
+                    blob_name=blob_name,
+                    account_key=account["AccountKey"],
+                    permission=permission,
+                    expiry=expiry,
+                    start=now,
+                    content_disposition=content_disposition,
+                )
+                return f"{blob_url}?{sas}"
+
+            if self._account_url and self._credential is not None:
+                delegation_key = await self._client.get_user_delegation_key(now, expiry)
+                sas = generate_blob_sas(
+                    account_name=self._account_name_from_url(self._account_url),
+                    container_name=actual_container,
+                    blob_name=blob_name,
+                    user_delegation_key=delegation_key,
+                    permission=permission,
+                    expiry=expiry,
+                    start=now,
+                    content_disposition=content_disposition,
+                )
+                return f"{blob_url}?{sas}"
+
+            return None
+        except Exception:  # pragma: no cover - defensive; falls back to streaming
+            logger.exception("blob.sas_generation_failed", container=container, blob=blob_name)
+            return None
 
     # -- helpers ------------------------------------------------------------
     def _blob(self, container: str, blob_name: str) -> Any:

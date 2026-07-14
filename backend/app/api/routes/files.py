@@ -11,7 +11,8 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import DbSession, StorageServiceDep
 from app.auth.authorization import require_role
@@ -19,6 +20,7 @@ from app.auth.principal import Principal
 from app.models.role import RoleName
 from app.schemas.files import (
     FileDetailResponse,
+    FileDownloadResponse,
     FileListItem,
     FileListResponse,
     FileUploadResponse,
@@ -121,4 +123,52 @@ async def get_file(
         status="available",
         created_at=stored.created_at,
         updated_at=stored.updated_at,
+    )
+
+
+def _ascii_filename(value: str) -> str:
+    return value.encode("ascii", "ignore").decode("ascii") or "download"
+
+
+@router.get(
+    "/{file_id}/download",
+    response_model=FileDownloadResponse,
+    summary="Get a short-lived download URL for a file (tenant-scoped)",
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "File belongs to another tenant."},
+        status.HTTP_404_NOT_FOUND: {"description": "File does not exist."},
+    },
+)
+async def download_file(
+    file_id: uuid.UUID,
+    principal: Annotated[Principal, Depends(require_role(RoleName.VIEWER))],
+    db: DbSession,
+    storage: StorageServiceDep,
+) -> FileDownloadResponse | Response:
+    service = FileService(db, storage)
+    try:
+        target = await service.get_download(principal, file_id)
+    except StoredFileNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.") from exc
+    except StoredFileForbiddenError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You do not have access to this file."
+        ) from exc
+
+    # Preferred: hand back a short-lived SAS URL (data-plane split; no bytes via API).
+    if target.url is not None and target.expires_at is not None:
+        return FileDownloadResponse(
+            download_url=target.url,
+            expires_at=target.expires_at,
+            filename=target.filename,
+        )
+
+    # Fallback: stream the blob through the backend (e.g. SAS unavailable).
+    downloader = await storage.download_stream(target.container, target.blob_name)
+    return StreamingResponse(
+        downloader.chunks(),
+        media_type=target.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{_ascii_filename(target.filename)}"'
+        },
     )
