@@ -27,6 +27,7 @@ from app.schemas.files import (
 )
 from app.services.file_service import (
     FileService,
+    StoredFileAlreadyDeletedError,
     StoredFileForbiddenError,
     StoredFileNotFoundError,
 )
@@ -72,10 +73,26 @@ async def list_files(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     sort: Annotated[Literal["asc", "desc"], Query(description="By upload date.")] = "desc",
+    search: Annotated[
+        str | None,
+        Query(max_length=255, description="Case-insensitive filename substring match."),
+    ] = None,
+    content_type: Annotated[
+        str | None,
+        Query(max_length=255, description="Case-insensitive MIME-type prefix filter."),
+    ] = None,
 ) -> FileListResponse:
     service = FileService(db)
+    # Treat blank/whitespace-only filters as absent.
+    normalized_search = search.strip() if search else None
+    normalized_type = content_type.strip() if content_type else None
     items, total = await service.list_files(
-        principal, limit=limit, offset=offset, descending=sort == "desc"
+        principal,
+        limit=limit,
+        offset=offset,
+        descending=sort == "desc",
+        search=normalized_search or None,
+        content_type=normalized_type or None,
     )
     return FileListResponse(
         items=[FileListItem.model_validate(item) for item in items],
@@ -172,3 +189,37 @@ async def download_file(
             "Content-Disposition": f'attachment; filename="{_ascii_filename(target.filename)}"'
         },
     )
+
+
+@router.delete(
+    "/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete a file (metadata retired + blob removed)",
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "File belongs to another tenant."},
+        status.HTTP_404_NOT_FOUND: {"description": "File does not exist."},
+        status.HTTP_409_CONFLICT: {"description": "File is already deleted."},
+    },
+)
+async def delete_file(
+    file_id: uuid.UUID,
+    # Contributor and above (Manager, TenantAdmin) may delete; Viewer/Guest cannot.
+    principal: Annotated[Principal, Depends(require_role(RoleName.CONTRIBUTOR))],
+    db: DbSession,
+    storage: StorageServiceDep,
+) -> Response:
+    service = FileService(db, storage)
+    try:
+        await service.delete_file(principal, file_id)
+    except StoredFileNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.") from exc
+    except StoredFileForbiddenError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You do not have access to this file."
+        ) from exc
+    except StoredFileAlreadyDeletedError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This file has already been deleted."
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

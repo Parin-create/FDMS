@@ -36,6 +36,10 @@ class StoredFileForbiddenError(Exception):
     """The file exists but belongs to another tenant (mapped to HTTP 403)."""
 
 
+class StoredFileAlreadyDeletedError(Exception):
+    """The file is already soft-deleted (mapped to HTTP 409)."""
+
+
 # Short-lived read window for download SAS URLs.
 _DOWNLOAD_EXPIRY_SECONDS = 300
 
@@ -136,21 +140,35 @@ class FileService:
         limit: int,
         offset: int,
         descending: bool = True,
+        search: str | None = None,
+        content_type: str | None = None,
     ) -> tuple[list[StoredFile], int]:
-        """List the current tenant's files (paginated, ordered by upload date)."""
+        """List the current tenant's files (paginated, filtered, ordered by date)."""
         return await self._repo.list_for_tenant(
-            principal.tenant_id, limit=limit, offset=offset, descending=descending
+            principal.tenant_id,
+            limit=limit,
+            offset=offset,
+            descending=descending,
+            search=search,
+            content_type=content_type,
         )
 
-    async def _get_owned_file(self, principal: Principal, file_id: uuid.UUID) -> StoredFile:
-        """Load a file and enforce existence + tenant ownership (404/403)."""
+    async def _get_owned_file(
+        self, principal: Principal, file_id: uuid.UUID, *, include_deleted: bool = False
+    ) -> StoredFile:
+        """Load a file and enforce existence + tenant ownership (404/403).
+
+        For read paths (``include_deleted=False``) a soft-deleted file is treated
+        as gone (404). The delete path passes ``include_deleted=True`` so it can
+        reach the row and report "already deleted" (409) instead.
+        """
         stored = await self._repo.get_by_id(file_id)
         if stored is None:
             raise StoredFileNotFoundError
         if stored.tenant_id != principal.tenant_id:
             raise StoredFileForbiddenError
-        # Soft-delete is not yet in the schema; when a ``deleted_at`` column is added,
-        # a soft-deleted file should raise StoredFileNotFoundError here.
+        if not include_deleted and stored.deleted_at is not None:
+            raise StoredFileNotFoundError
         return stored
 
     async def get_file(
@@ -187,6 +205,44 @@ class FileService:
             blob_name=stored.blob_name,
             url=url,
             expires_at=expires_at,
+        )
+
+    async def delete_file(self, principal: Principal, file_id: uuid.UUID) -> None:
+        """Soft-delete a file: stamp ``deleted_at``, then remove the backing blob.
+
+        Raises :class:`StoredFileNotFoundError` (404), :class:`StoredFileForbiddenError`
+        (403), or :class:`StoredFileAlreadyDeletedError` (409).
+
+        Consistency: the metadata is the source of truth, so the row is stamped and
+        committed *first* (making the file immediately invisible to reads/lists),
+        then the blob is deleted best-effort. If the blob delete fails, the file is
+        still logically gone and the orphaned blob is logged for later reaping — this
+        is preferred over deleting the blob first, which could leave a live row
+        pointing at missing bytes if the commit then failed.
+        """
+        if self._storage is None:  # pragma: no cover - guarded by DI in the route
+            raise RuntimeError("FileService.delete_file requires a storage client")
+
+        stored = await self._get_owned_file(principal, file_id, include_deleted=True)
+        if stored.deleted_at is not None:
+            raise StoredFileAlreadyDeletedError
+
+        await self._repo.mark_deleted(stored, datetime.now(tz=UTC))
+        await self._db.commit()
+
+        try:
+            await self._storage.delete(stored.blob_container, stored.blob_name)
+        except Exception:  # pragma: no cover - best effort; row already retired
+            logger.exception(
+                "files.blob_delete_failed",
+                file_id=str(stored.id),
+                blob=stored.blob_name,
+            )
+
+        logger.info(
+            "files.deleted",
+            file_id=str(stored.id),
+            tenant_id=str(principal.tenant_id),
         )
 
     async def _resolve_uploader_email(self, user_id: uuid.UUID | None) -> str | None:

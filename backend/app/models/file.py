@@ -9,8 +9,9 @@ carries ``tenant_id``); the table is RLS-ready for ADR-006. Download/delete/vers
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import BigInteger, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -25,6 +26,13 @@ class StoredFile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ),
         # Supports tenant-scoped listing ordered by upload date (created_at).
         Index("ix_files_tenant_id_created_at", "tenant_id", "created_at"),
+        # Partial index for the hot path: listing *live* files for a tenant.
+        Index(
+            "ix_files_tenant_live_created_at",
+            "tenant_id",
+            "created_at",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
@@ -44,6 +52,11 @@ class StoredFile(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     etag: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Soft delete: NULL = live, a timestamp = logically deleted (row + blob retired).
+    # A partial index keeps live-file listing fast without scanning deleted rows.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<StoredFile id={self.id} name={self.original_filename!r} tenant={self.tenant_id}>"

@@ -56,6 +56,10 @@ export interface FileListParams {
   limit: number;
   offset: number;
   sort: 'asc' | 'desc';
+  /** Case-insensitive filename substring filter. */
+  search?: string;
+  /** Case-insensitive MIME-type prefix filter (e.g. "image/", "application/pdf"). */
+  contentType?: string;
 }
 
 /** Fetch a page of the tenant's files. */
@@ -65,6 +69,12 @@ export async function fetchFiles(params: FileListParams): Promise<FileListRespon
     offset: String(params.offset),
     sort: params.sort,
   });
+  if (params.search) {
+    query.set('search', params.search);
+  }
+  if (params.contentType) {
+    query.set('content_type', params.contentType);
+  }
   const data = await apiClient.get<unknown>(`/files?${query.toString()}`);
   return fileListResponseSchema.parse(data);
 }
@@ -88,6 +98,11 @@ export type FileDownload = z.infer<typeof fileDownloadSchema>;
 export async function fetchDownloadUrl(id: string): Promise<FileDownload> {
   const data = await apiClient.get<unknown>(`/files/${id}/download`);
   return fileDownloadSchema.parse(data);
+}
+
+/** Soft-delete a file. Resolves on success (backend returns 204 No Content). */
+export async function deleteFile(id: string): Promise<void> {
+  await apiClient.delete<void>(`/files/${id}`);
 }
 
 export const fileQueryKeys = {
