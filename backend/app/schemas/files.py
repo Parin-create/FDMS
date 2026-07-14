@@ -43,3 +43,21 @@ class FileListResponse(BaseModel):
     total: int = Field(..., description="Total files for the tenant.")
     limit: int = Field(..., description="Page size used.")
     offset: int = Field(..., description="Offset used.")
+
+
+class FileDetailResponse(BaseModel):
+    """Full metadata for a single file (no content)."""
+
+    id: uuid.UUID
+    tenant_id: uuid.UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int
+    blob_container: str
+    blob_name: str
+    etag: str | None = None
+    uploaded_by_id: uuid.UUID | None = None
+    uploaded_by: str | None = Field(default=None, description="Uploader email, if known.")
+    status: str = Field(..., description="Lifecycle status (e.g. 'available').")
+    created_at: datetime
+    updated_at: datetime

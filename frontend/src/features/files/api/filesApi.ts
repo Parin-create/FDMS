@@ -33,6 +33,25 @@ export const fileListResponseSchema = z.object({
 
 export type FileListResponse = z.infer<typeof fileListResponseSchema>;
 
+/** Mirrors the backend `FileDetailResponse` schema. */
+export const fileDetailSchema = z.object({
+  id: z.string().uuid(),
+  tenant_id: z.string().uuid(),
+  original_filename: z.string(),
+  content_type: z.string(),
+  size_bytes: z.number(),
+  blob_container: z.string(),
+  blob_name: z.string(),
+  etag: z.string().nullable().optional(),
+  uploaded_by_id: z.string().uuid().nullable().optional(),
+  uploaded_by: z.string().nullable().optional(),
+  status: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export type FileDetail = z.infer<typeof fileDetailSchema>;
+
 export interface FileListParams {
   limit: number;
   offset: number;
@@ -50,6 +69,13 @@ export async function fetchFiles(params: FileListParams): Promise<FileListRespon
   return fileListResponseSchema.parse(data);
 }
 
+/** Fetch a single file's metadata. */
+export async function fetchFileDetail(id: string): Promise<FileDetail> {
+  const data = await apiClient.get<unknown>(`/files/${id}`);
+  return fileDetailSchema.parse(data);
+}
+
 export const fileQueryKeys = {
   list: (params: FileListParams) => ['files', 'list', params] as const,
+  detail: (id: string) => ['files', 'detail', id] as const,
 };

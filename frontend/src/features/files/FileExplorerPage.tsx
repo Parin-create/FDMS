@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useCurrentUser } from '@/auth/CurrentUserContext';
 import { EmptyState } from '@/features/files/components/EmptyState';
+import { FileDetailsDrawer } from '@/features/files/components/FileDetailsDrawer';
 import { FileTable } from '@/features/files/components/FileTable';
 import { LoadingState } from '@/features/files/components/LoadingState';
 import { Pagination } from '@/features/files/components/Pagination';
@@ -26,6 +27,7 @@ function errorMessage(error: Error | null): string {
 export function FileExplorerPage(): JSX.Element {
   const user = useCurrentUser();
   const [page, setPage] = useState(0);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data, isLoading, isError, error, isFetching } = useFilesQuery({
     limit: PAGE_SIZE,
@@ -52,7 +54,7 @@ export function FileExplorerPage(): JSX.Element {
         <EmptyState />
       ) : data ? (
         <div className="space-y-4">
-          <FileTable items={data.items} />
+          <FileTable items={data.items} onSelect={(file) => setSelectedId(file.id)} />
           <Pagination
             page={page}
             pageSize={PAGE_SIZE}
@@ -62,6 +64,8 @@ export function FileExplorerPage(): JSX.Element {
           />
         </div>
       ) : null}
+
+      <FileDetailsDrawer fileId={selectedId} onClose={() => setSelectedId(null)} />
     </div>
   );
 }

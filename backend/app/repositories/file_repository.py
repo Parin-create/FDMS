@@ -25,6 +25,15 @@ class FileRepository:
         self._db.add(stored_file)
         await self._db.flush()
 
+    async def get_by_id(self, file_id: uuid.UUID) -> StoredFile | None:
+        """Fetch a file by primary key (NOT tenant-scoped).
+
+        The service performs the tenant check so it can distinguish "does not
+        exist" (404) from "exists in another tenant" (403).
+        """
+        result = await self._db.execute(select(StoredFile).where(StoredFile.id == file_id))
+        return result.scalar_one_or_none()
+
     async def list_for_tenant(
         self,
         tenant_id: uuid.UUID,

@@ -13,3 +13,4 @@
 export { UploadPage } from '@/features/files/UploadPage';
 export { FileExplorerPage } from '@/features/files/FileExplorerPage';
 export { UploadCard } from '@/features/files/components/UploadCard';
+export { FileDetailsDrawer } from '@/features/files/components/FileDetailsDrawer';

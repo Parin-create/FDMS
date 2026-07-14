@@ -3,10 +3,11 @@ import { FileRow } from '@/features/files/components/FileRow';
 
 interface FileTableProps {
   items: FileListItem[];
+  onSelect: (file: FileListItem) => void;
 }
 
 /** Table of files. Horizontally scrollable on small screens. */
-export function FileTable({ items }: FileTableProps): JSX.Element {
+export function FileTable({ items, onSelect }: FileTableProps): JSX.Element {
   return (
     <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="overflow-x-auto">
@@ -21,7 +22,7 @@ export function FileTable({ items }: FileTableProps): JSX.Element {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {items.map((file) => (
-              <FileRow key={file.id} file={file} />
+              <FileRow key={file.id} file={file} onSelect={onSelect} />
             ))}
           </tbody>
         </table>

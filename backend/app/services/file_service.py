@@ -13,15 +13,25 @@ import uuid
 from collections.abc import AsyncIterator
 
 from fastapi import UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principal import Principal
 from app.core.logging import get_logger
 from app.models.file import StoredFile
+from app.models.user import User
 from app.repositories.file_repository import FileRepository
 from app.services.blob_storage import BlobStorageService, guess_content_type
 
 logger = get_logger(__name__)
+
+
+class StoredFileNotFoundError(Exception):
+    """The requested file id does not exist (mapped to HTTP 404)."""
+
+
+class StoredFileForbiddenError(Exception):
+    """The file exists but belongs to another tenant (mapped to HTTP 403)."""
 
 # Logical container documents are stored in (configurable via BLOB_CONTAINER_DOCUMENTS).
 _DOCUMENTS_CONTAINER = "documents"
@@ -113,3 +123,26 @@ class FileService:
         return await self._repo.list_for_tenant(
             principal.tenant_id, limit=limit, offset=offset, descending=descending
         )
+
+    async def get_file(
+        self, principal: Principal, file_id: uuid.UUID
+    ) -> tuple[StoredFile, str | None]:
+        """Return a single file's metadata plus the uploader's email.
+
+        Raises :class:`StoredFileNotFoundError` (404) when the id does not exist,
+        or :class:`StoredFileForbiddenError` (403) when it belongs to another tenant.
+        """
+        stored = await self._repo.get_by_id(file_id)
+        if stored is None:
+            raise StoredFileNotFoundError
+        if stored.tenant_id != principal.tenant_id:
+            raise StoredFileForbiddenError
+        uploaded_by = await self._resolve_uploader_email(stored.uploaded_by_id)
+        return stored, uploaded_by
+
+    async def _resolve_uploader_email(self, user_id: uuid.UUID | None) -> str | None:
+        if user_id is None:
+            return None
+        result = await self._db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        return user.email if user is not None else None

@@ -8,16 +8,26 @@ scope for this sprint.
 
 from __future__ import annotations
 
+import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 
 from app.api.deps import DbSession, StorageServiceDep
 from app.auth.authorization import require_role
 from app.auth.principal import Principal
 from app.models.role import RoleName
-from app.schemas.files import FileListItem, FileListResponse, FileUploadResponse
-from app.services.file_service import FileService
+from app.schemas.files import (
+    FileDetailResponse,
+    FileListItem,
+    FileListResponse,
+    FileUploadResponse,
+)
+from app.services.file_service import (
+    FileService,
+    StoredFileForbiddenError,
+    StoredFileNotFoundError,
+)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -70,4 +80,45 @@ async def list_files(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/{file_id}",
+    response_model=FileDetailResponse,
+    summary="Get a file's metadata (tenant-scoped)",
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "File belongs to another tenant."},
+        status.HTTP_404_NOT_FOUND: {"description": "File does not exist."},
+    },
+)
+async def get_file(
+    file_id: uuid.UUID,
+    principal: Annotated[Principal, Depends(require_role(RoleName.VIEWER))],
+    db: DbSession,
+) -> FileDetailResponse:
+    service = FileService(db)
+    try:
+        stored, uploaded_by = await service.get_file(principal, file_id)
+    except StoredFileNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found.") from exc
+    except StoredFileForbiddenError as exc:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "You do not have access to this file."
+        ) from exc
+
+    return FileDetailResponse(
+        id=stored.id,
+        tenant_id=stored.tenant_id,
+        original_filename=stored.original_filename,
+        content_type=stored.content_type,
+        size_bytes=stored.size_bytes,
+        blob_container=stored.blob_container,
+        blob_name=stored.blob_name,
+        etag=stored.etag,
+        uploaded_by_id=stored.uploaded_by_id,
+        uploaded_by=uploaded_by,
+        status="available",
+        created_at=stored.created_at,
+        updated_at=stored.updated_at,
     )
