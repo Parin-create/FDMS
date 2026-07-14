@@ -10,6 +10,7 @@ from app.models.base import (
     UUIDPrimaryKeyMixin,
     metadata_obj,
 )
+from app.models.file import StoredFile
 from app.models.role import ROLE_HIERARCHY, RoleName, role_at_least
 from app.models.tenant import Tenant, TenantStatus
 from app.models.user import User
@@ -19,6 +20,7 @@ __all__ = [
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
     "metadata_obj",
+    "StoredFile",
     "RoleName",
     "ROLE_HIERARCHY",
     "role_at_least",
